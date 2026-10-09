@@ -1,1 +1,461 @@
-<!DOCTYPE html><html lang="en"><head>    <meta charset="UTF-8">    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>Protamine Dose Calculator</title>    <style>        body {            font-family: Arial, sans-serif;            line-height: 1.6;            margin: 20px;            background-color: #f4f4f4;            color: #333;        }        .container {            max-width: 700px;            margin: auto;            background: #fff;            padding: 20px;            border-radius: 8px;            box-shadow: 0 0 10px rgba(0,0,0,0.1);        }        h1, h2 {            color: #333;            text-align: center;        }        .form-group {            margin-bottom: 15px;        }        label {            display: block;            margin-bottom: 5px;            font-weight: bold;        }        input[type="number"], input[type="time"], input[type="text"] {            width: calc(100% - 22px); /* Adjust for padding and border */            padding: 10px;            border: 1px solid #ddd;            border-radius: 4px;            box-sizing: border-box;        }        input[type="time"] { /* More specific for time inputs */            width: auto; /* Allow time input to be its natural width */            min-width: 120px;        }        button {            display: block;            width: 100%;            padding: 10px 15px;            background-color: #007bff;            color: white;            border: none;            border-radius: 4px;            cursor: pointer;            font-size: 16px;            margin-top: 20px;        }        button:hover {            background-color: #0056b3;        }        .results, .log-section {            margin-top: 20px;            padding: 15px;            background-color: #e9ecef;            border-radius: 4px;        }        .results p, .log-section p {            margin: 5px 0;        }        .results strong {            color: #0056b3;        }        .error-message {            color: red;            font-weight: bold;            margin-top: 10px;        }        .disclaimer {            font-size: 0.9em;            color: #666;            margin-top: 15px;            border-top: 1px solid #eee;            padding-top: 10px;        }        .additional-dose-group {            display: flex;            gap: 10px; /* Space between dose and time inputs */            align-items: center; /* Align items vertically */            margin-bottom: 10px;        }        .additional-dose-group label {             margin-bottom: 0; /* Remove bottom margin for inline labels */             min-width: 60px; /* Give some fixed width to "Dose:" / "Time:" labels */        }        .additional-dose-group input[type="number"],        .additional-dose-group input[type="time"] {            flex-grow: 1; /* Allow inputs to take available space */            width: auto; /* Reset width to allow flex-grow */        }    </style></head><body>    <div class="container">        <h1>Protamine Dose Calculator</h1>        <div class="form-group">            <label for="heparinDose">Last Heparin Dose (units):</label>            <input type="number" id="heparinDose" placeholder="e.g., 5000">        </div>        <div class="form-group">            <label for="heparinTimeGiven">Time Last Heparin Dose Given:</label>            <input type="time" id="heparinTimeGiven">        </div>        <div class="form-group">            <label for="currentTimeInput">Current Time:</label>            <input type="time" id="currentTimeInput">        </div>        <button onclick="calculateProtamine()">Calculate Recommended Protamine Dose</button>        <div class="results" style="display:none;">            <h2>Calculation Results</h2>            <p>Time since last heparin: <strong id="timeDiffDisplay">---</strong> minutes</p>            <p>Recommended Initial Protamine Dose: <strong id="recDoseDisplay">---</strong> mg</p>            <p class="disclaimer"><strong>DISCLAIMER:</strong> This is a calculated suggestion based on general guidelines. Administer protamine based on clinical judgment, patient factors, and institutional protocols. Maximum recommended single dose is often 50mg. <strong>VALIDATE THIS CALCULATOR WITH QUALIFIED MEDICAL PROFESSIONALS BEFORE CLINICAL USE.</strong></p>        </div>        <div id="calcErrorDisplay" class="error-message"></div>        <div class="log-section">            <h2>Log Administered Protamine</h2>            <div class="form-group">                <label for="actualInitialProtamineDose">Actual Initial Protamine Dose (mg):</label>                <input type="number" id="actualInitialProtamineDose" placeholder="e.g., 25">            </div>            <div class="form-group">                <label for="actualInitialProtamineTime">Time Initial Protamine Given:</label>                <input type="time" id="actualInitialProtamineTime">            </div>            <h3>Additional Protamine Doses (Optional)</h3>            <div id="additionalDosesContainer">                <!-- Additional doses will be generated here by JS -->            </div>        </div>    </div>    <script>        document.addEventListener('DOMContentLoaded', function() {            prefillCurrentTime();            generateAdditionalDoseFields(7); // Generate 7 slots        });        function prefillCurrentTime() {            const now = new Date();            const hours = String(now.getHours()).padStart(2, '0');            const minutes = String(now.getMinutes()).padStart(2, '0');            document.getElementById('currentTimeInput').value = `${hours}:${minutes}`;        }        function generateAdditionalDoseFields(count) {            const container = document.getElementById('additionalDosesContainer');            for (let i = 1; i <= count; i++) {                const group = document.createElement('div');                group.className = 'additional-dose-group';                group.innerHTML = `                    <label for="additionalProtamineDose${i}">Dose ${i} (mg):</label>                    <input type="number" id="additionalProtamineDose${i}" placeholder="mg">                    <label for="additionalProtamineTime${i}">Time ${i}:</label>                    <input type="time" id="additionalProtamineTime${i}">                `;                container.appendChild(group);            }        }        function parseHHMMToDate(timeStr) {            if (!timeStr || !/^\d{2}:\d{2}$/.test(timeStr)) return null;            const [hours, minutes] = timeStr.split(':').map(Number);            if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null;            const date = new Date(); // Use today's date as a base            date.setHours(hours, minutes, 0, 0); // Set H, M, reset S, MS            return date;        }        function calculateProtamine() {            const heparinDoseStr = document.getElementById('heparinDose').value;            const heparinTimeGivenStr = document.getElementById('heparinTimeGiven').value;            const currentTimeInputStr = document.getElementById('currentTimeInput').value;            const errorDisplay = document.getElementById('calcErrorDisplay');            const resultsDiv = document.querySelector('.results');            errorDisplay.textContent = '';            resultsDiv.style.display = 'none'; // Hide results initially            let errorMessages = [];            const heparinDose = parseFloat(heparinDoseStr);            if (isNaN(heparinDose) || heparinDose <= 0) {                errorMessages.push("Heparin dose must be a positive number.");            }            const heparinTimeDate = parseHHMMToDate(heparinTimeGivenStr);            if (!heparinTimeDate) {                errorMessages.push("Invalid 'Heparin Time Given'. Use HH:MM format.");            }            const currentTimeDate = parseHHMMToDate(currentTimeInputStr);            if (!currentTimeDate) {                errorMessages.push("Invalid 'Current Time'. Use HH:MM format.");            }            if (errorMessages.length > 0) {                errorDisplay.innerHTML = errorMessages.join("<br>");                return;            }            let timeDiffMillis = currentTimeDate.getTime() - heparinTimeDate.getTime();            // Handle crossing midnight: if heparin time is "later" than current time,            // assume it was on the previous day. Add 24 hours to the difference.            if (timeDiffMillis < 0) {                timeDiffMillis += 24 * 60 * 60 * 1000;            }            const timeDiffMinutes = Math.round(timeDiffMillis / (60 * 1000));            document.getElementById('timeDiffDisplay').textContent = timeDiffMinutes;            let protamineMgPer100U;            // CLINICALLY VALIDATE THIS DOSING LOGIC            if (timeDiffMinutes < 0) { // Should not happen with above logic, but safeguard                 errorMessages.push("Time calculation error (negative duration).");                 protamineMgPer100U = 0;            } else if (timeDiffMinutes <= 30) {                protamineMgPer100U = 1.0;            } else if (timeDiffMinutes <= 60) { // 31-60 minutes                protamineMgPer100U = 0.75;            } else if (timeDiffMinutes <= 120) { // 61-120 minutes                protamineMgPer100U = 0.5;            } else if (timeDiffMinutes <= 180) { // 121-180 minutes (2-3 hours)                protamineMgPer100U = 0.375;            } else { // More than 180 minutes (3 hours)                protamineMgPer100U = 0.25;            }            if (errorMessages.length > 0) { // Re-check after time diff logic for any new errors                errorDisplay.innerHTML = errorMessages.join("<br>");                return;            }            let calculatedDose = (heparinDose / 100) * protamineMgPer100U;            // Max single dose (e.g., 50mg) - CONSULT GUIDELINES            let recommendedDose = Math.min(calculatedDose, 50);            recommendedDose = Math.round(recommendedDose * 10) / 10; // Round to one decimal place            document.getElementById('recDoseDisplay').textContent = recommendedDose;            resultsDiv.style.display = 'block'; // Show results        }    </script></body></html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Protamine Dose Calculator — Same-Day vs Multi-Day</title>
+  <style>
+    :root { --bg:#f6f7fb; --card:#fff; --ink:#1f2330; --muted:#5a6473; --accent:#0d6efd; --ok:#2e7d32; --warn:#c62828; --border:#e6e8ee; }
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--ink);margin:20px}
+    .container{max-width:980px;margin:auto;background:var(--card);padding:20px;border-radius:12px;box-shadow:0 4px 20px rgba(16,24,40,.06)}
+    h1{margin:0 0 6px;text-align:center}
+    p.lead{margin:0 0 14px;text-align:center;color:var(--muted)}
+    h2{margin:16px 0 8px}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px}
+    .form-group{display:flex;flex-direction:column;gap:6px}
+    label{font-weight:600}
+    input[type="number"],input[type="time"],input[type="datetime-local"]{padding:10px;border:1px solid var(--border);border-radius:8px;background:#fff}
+    .card{border:1px solid var(--border);background:#fff;border-radius:12px;padding:14px;margin-top:10px}
+    .dose-entry{border:1px dashed var(--border);border-radius:10px;padding:12px;margin-top:10px;background:#fbfcff}
+    .actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:10px}
+    button{padding:10px 14px;border-radius:10px;border:0;background:var(--accent);color:#fff;font-weight:600;cursor:pointer}
+    button.secondary{background:#667085}
+    button.ok{background:var(--ok)}
+    button.danger{background:var(--warn)}
+    .error{color:var(--warn);font-weight:700;margin-top:10px}
+    .results{margin-top:14px;padding:14px;border-radius:10px;background:#eef3ff}
+    small.muted{color:var(--muted)}
+    ul.tight{margin:6px 0 0 18px}
+    .right{justify-content:flex-end}
+    .mode-pill{display:inline-flex;gap:8px;align-items:center;background:#f0f3ff;border:1px solid var(--border);padding:10px;border-radius:999px}
+    .mode-pill span{font-weight:600}
+    .hidden{display:none}
+    .tablewrap{overflow-x:auto}
+    table{border-collapse:collapse;width:100%;font-size:.92em;background:#fff}
+    th,td{border:1px solid var(--border);padding:6px 8px;text-align:left}
+    th{background:#f0f3ff}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Protamine Dose Calculator</h1>
+    <p class="lead"><small class="muted">Choose same-day or multi-day workflow. Accounts for initial and all subsequent UFH boluses.</small></p>
+
+    <!-- MODE SELECTOR -->
+    <div class="card">
+      <h2>First, choose your workflow</h2>
+      <div class="mode-pill" role="group" aria-label="workflow mode">
+        <span>Will all heparin & protamine doses be on the same day?</span>
+        <button id="modeSameDay" type="button" class="">Yes (time-only)</button>
+        <button id="modeMultiDay" type="button" class="secondary">No (date + time)</button>
+      </div>
+      <small class="muted">You can switch modes anytime; your inputs won’t be lost.</small>
+    </div>
+
+    <!-- SAME-DAY WORKFLOW (TIME-ONLY) -->
+    <section id="sameDaySection" class="">
+      <div class="card">
+        <h2>Calculation Time (Same-day)</h2>
+        <div class="grid">
+          <div class="form-group">
+            <label for="calcTime">Current Time (HH:MM)</label>
+            <input id="calcTime" type="time" step="60" />
+            <small class="muted">Prefilled to your device’s local time; edit if needed.</small>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Initial Heparin Dose</h2>
+        <div class="grid">
+          <div class="form-group">
+            <label for="initDoseUnits">Dose (units)</label>
+            <input id="initDoseUnits" type="number" inputmode="numeric" min="0" step="1" placeholder="e.g., 5000" />
+          </div>
+          <div class="form-group">
+            <label for="initDoseTime">Time Given (HH:MM)</label>
+            <input id="initDoseTime" type="time" step="60" />
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Additional Heparin Boluses</h2>
+        <div id="sdDosesContainer"></div>
+        <div class="actions">
+          <button id="sdAddDoseBtn" type="button">Add Bolus</button>
+          <button id="sdClearDosesBtn" class="secondary" type="button">Clear All</button>
+        </div>
+        <small class="muted">If a bolus time is later than the calculation time, it’s treated as from the <em>previous day</em>.</small>
+      </div>
+    </section>
+
+    <!-- MULTI-DAY WORKFLOW (DATE + TIME) -->
+    <section id="multiDaySection" class="hidden">
+      <div class="card">
+        <h2>Calculation Time (Multi-day)</h2>
+        <div class="grid">
+          <div class="form-group">
+            <label for="calcDateTime">Current Date & Time</label>
+            <input id="calcDateTime" type="datetime-local" />
+            <small class="muted">Prefilled to “now”; edit if needed.</small>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Initial Heparin Dose</h2>
+        <div class="grid">
+          <div class="form-group">
+            <label for="mdInitDoseUnits">Dose (units)</label>
+            <input id="mdInitDoseUnits" type="number" inputmode="numeric" min="0" step="1" placeholder="e.g., 5000" />
+          </div>
+          <div class="form-group">
+            <label for="mdInitDoseDateTime">Time Given (date & time)</label>
+            <input id="mdInitDoseDateTime" type="datetime-local" />
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Additional Heparin Boluses</h2>
+        <div id="mdDosesContainer"></div>
+        <div class="actions">
+          <button id="mdAddDoseBtn" type="button">Add Bolus</button>
+          <button id="mdClearDosesBtn" class="secondary" type="button">Clear All</button>
+        </div>
+        <small class="muted">Use this workflow if any doses span different calendar days.</small>
+      </div>
+    </section>
+
+    <!-- CONTROLS -->
+    <div class="actions right">
+      <button id="calcBtn" class="ok" type="button">Calculate Recommended Protamine Dose</button>
+      <button id="copyBtn" class="secondary" type="button">Copy Results</button>
+    </div>
+
+    <!-- ERRORS & RESULTS -->
+    <div id="err" class="error" aria-live="polite"></div>
+    <div id="results" class="results hidden">
+      <h2>Results</h2>
+      <p>Total Estimated Remaining Heparin: <strong id="totalHeparin">--</strong> units</p>
+      <p>Recommended Initial Protamine Dose: <strong id="protamineMg">--</strong> mg</p>
+      <details open>
+        <summary><strong>Calculation (show your work)</strong></summary>
+        <div id="mathBody"></div>
+      </details>
+      <details>
+        <summary><strong>Assumptions & Method</strong></summary>
+        <ul class="tight">
+          <li>UFH boluses only; no infusions/LMWH.</li>
+          <li>First-order decay with half-life = <code>90 min</code> (editable in code).</li>
+          <li>Neutralization ratio <code>1 mg protamine : 100 units heparin</code> (editable).</li>
+          <li>Same-day mode: if bolus time &gt; calc time, bolus assumed to be previous day.</li>
+        </ul>
+      </details>
+      <div class="card" style="margin-top:10px">
+        <strong>CRITICAL DISCLAIMER</strong>
+        <ul class="tight">
+          <li>Educational/investigational tool; not a substitute for ACT/aPTT or institutional policy.</li>
+          <li>Patient factors alter kinetics; validate locally before clinical use.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ---------- CONFIG ----------
+    const HEPARIN_HALF_LIFE_MIN = 90;     // minutes
+    const UNITS_PER_MG_PROTAMINE = 100;   // 100 units heparin neutralized by 1 mg protamine
+
+    // ---------- HELPERS ----------
+    const pad = n => String(n).padStart(2,'0');
+    const $ = sel => document.querySelector(sel);
+    const $$ = sel => Array.from(document.querySelectorAll(sel));
+    const show = el => el.classList.remove('hidden');
+    const hide = el => el.classList.add('hidden');
+
+    function setNowTimes() {
+      // Same-day (time only)
+      const now = new Date();
+      $('#calcTime').value = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+      // Multi-day (datetime-local)
+      $('#calcDateTime').value = toLocalDT(now);
+    }
+
+    function toLocalDT(d) {
+      const yyyy = d.getFullYear();
+      const MM = pad(d.getMonth() + 1);
+      const DD = pad(d.getDate());
+      const hh = pad(d.getHours());
+      const mm = pad(d.getMinutes());
+      return `${yyyy}-${MM}-${DD}T${hh}:${mm}`;
+    }
+
+    function parseTimeToMinutes(s) {
+      if (!s || !/^\d{2}:\d{2}$/.test(s)) return null;
+      const [h, m] = s.split(':').map(Number);
+      if (h < 0 || h > 23 || m < 0 || m > 59) return null;
+      return h * 60 + m;
+    }
+
+    function elapsedMinutesSameDay(doseHHMM, calcHHMM) {
+      const d = parseTimeToMinutes(doseHHMM);
+      const c = parseTimeToMinutes(calcHHMM);
+      if (d == null || c == null) return null;
+      let delta = c - d;
+      if (delta < 0) delta += 24 * 60; // previous day assumption
+      return delta;
+    }
+
+    function parseDTLocal(s) {
+      if (!s) return null;
+      const t = new Date(s);
+      return isNaN(t.getTime()) ? null : t;
+    }
+
+    function elapsedMinutesMultiDay(doseDT, calcDT) {
+      const d = parseDTLocal(doseDT);
+      const c = parseDTLocal(calcDT);
+      if (!d || !c) return null;
+      const diff = (c.getTime() - d.getTime()) / 60000;
+      if (diff < 0) return null; // future dose vs calc time is invalid
+      return diff;
+    }
+
+    function remainingFraction(elapsedMin) {
+      if (elapsedMin == null || elapsedMin < 0) return 0;
+      return Math.pow(0.5, elapsedMin / HEPARIN_HALF_LIFE_MIN);
+    }
+
+    // ---------- MODE TOGGLING ----------
+    const sameDaySection = $('#sameDaySection');
+    const multiDaySection = $('#multiDaySection');
+    let currentMode = 'sameDay'; // 'sameDay' | 'multiDay'
+
+    function setMode(mode) {
+      currentMode = mode;
+      if (mode === 'sameDay') {
+        $('#modeSameDay').classList.remove('secondary');
+        $('#modeMultiDay').classList.add('secondary');
+        show(sameDaySection);
+        hide(multiDaySection);
+      } else {
+        $('#modeMultiDay').classList.remove('secondary');
+        $('#modeSameDay').classList.add('secondary');
+        show(multiDaySection);
+        hide(sameDaySection);
+      }
+    }
+
+    $('#modeSameDay').addEventListener('click', () => setMode('sameDay'));
+    $('#modeMultiDay').addEventListener('click', () => setMode('multiDay'));
+
+    // ---------- SAME-DAY: dynamic doses ----------
+    const sdContainer = $('#sdDosesContainer');
+    $('#sdAddDoseBtn').addEventListener('click', () => sdAddDoseRow());
+    $('#sdClearDosesBtn').addEventListener('click', () => sdContainer.innerHTML = '');
+
+    function sdAddDoseRow(prefillU = '', prefillT = '') {
+      const row = document.createElement('div');
+      row.className = 'dose-entry';
+      row.innerHTML = `
+        <div class="grid">
+          <div class="form-group">
+            <label>Dose (units)</label>
+            <input type="number" class="sd-units" min="0" step="1" placeholder="e.g., 3000" value="${prefillU}">
+          </div>
+          <div class="form-group">
+            <label>Time Given (HH:MM)</label>
+            <input type="time" class="sd-time" step="60" value="${prefillT}">
+          </div>
+        </div>
+        <div class="actions">
+          <button type="button" class="danger sd-remove">Remove</button>
+        </div>
+      `;
+      row.querySelector('.sd-remove').addEventListener('click', () => row.remove());
+      sdContainer.appendChild(row);
+      return row;
+    }
+
+    // ---------- MULTI-DAY: dynamic doses ----------
+    const mdContainer = $('#mdDosesContainer');
+    $('#mdAddDoseBtn').addEventListener('click', () => mdAddDoseRow());
+    $('#mdClearDosesBtn').addEventListener('click', () => mdContainer.innerHTML = '');
+
+    function mdAddDoseRow(prefillU = '', prefillDT = '') {
+      const row = document.createElement('div');
+      row.className = 'dose-entry';
+      row.innerHTML = `
+        <div class="grid">
+          <div class="form-group">
+            <label>Dose (units)</label>
+            <input type="number" class="md-units" min="0" step="1" placeholder="e.g., 3000" value="${prefillU}">
+          </div>
+          <div class="form-group">
+            <label>Time Given (date & time)</label>
+            <input type="datetime-local" class="md-dt" value="${prefillDT}">
+          </div>
+        </div>
+        <div class="actions">
+          <button type="button" class="danger md-remove">Remove</button>
+        </div>
+      `;
+      row.querySelector('.md-remove').addEventListener('click', () => row.remove());
+      mdContainer.appendChild(row);
+      return row;
+    }
+
+    // ---------- CALCULATION ----------
+    const errDiv = $('#err');
+    const resultsDiv = $('#results');
+
+    $('#calcBtn').addEventListener('click', () => {
+      errDiv.textContent = '';
+      resultsDiv.classList.add('hidden');
+
+      let totalEffectiveUnits = 0;
+      const steps = [];   // per-dose math, shown in the results
+      const errors = [];
+
+      if (currentMode === 'sameDay') {
+        const calcTime = $('#calcTime').value;
+        if (!calcTime) errors.push('Enter calculation time (HH:MM).');
+
+        const u0str = $('#initDoseUnits').value.trim();
+        const t0 = $('#initDoseTime').value;
+        const u0 = parseFloat(u0str);
+
+        const doses = [];
+        if (u0str || t0) {
+          if (!(u0 > 0)) errors.push('Initial dose (same-day): enter a positive number of units.');
+          if (!t0) errors.push('Initial dose (same-day): enter time (HH:MM).');
+          if (u0 > 0 && t0) doses.push({ units: u0, time: t0 });
+        }
+
+        $$('#sdDosesContainer .dose-entry').forEach((row, idx) => {
+          const uStr = row.querySelector('.sd-units').value.trim();
+          const tStr = row.querySelector('.sd-time').value;
+          if (!uStr && !tStr) return;
+          const u = parseFloat(uStr);
+          if (!(u > 0)) errors.push(`Bolus ${idx+1} (same-day): enter a positive number of units.`);
+          if (!tStr) errors.push(`Bolus ${idx+1} (same-day): enter time (HH:MM).`);
+          if (u > 0 && tStr) doses.push({ units: u, time: tStr });
+        });
+
+        if (doses.length === 0) errors.push('Enter at least one heparin bolus.');
+
+        if (!errors.length) {
+          doses.forEach(d => {
+            const mins = elapsedMinutesSameDay(d.time, calcTime);
+            if (mins == null) {
+              errors.push('Invalid time format encountered (same-day).');
+              return;
+            }
+            const frac = remainingFraction(mins);
+            totalEffectiveUnits += d.units * frac;
+            steps.push({ label: steps.length === 0 ? 'Initial dose' : `Bolus ${steps.length}`, when: d.time, units: d.units, mins, frac, remaining: d.units * frac });
+          });
+        }
+      } else {
+        const calcDT = $('#calcDateTime').value;
+        if (!calcDT) errors.push('Enter calculation date & time.');
+
+        const u0str = $('#mdInitDoseUnits').value.trim();
+        const dt0 = $('#mdInitDoseDateTime').value;
+        const u0 = parseFloat(u0str);
+
+        const doses = [];
+        if (u0str || dt0) {
+          if (!(u0 > 0)) errors.push('Initial dose (multi-day): enter a positive number of units.');
+          if (!dt0) errors.push('Initial dose (multi-day): enter date & time.');
+          if (u0 > 0 && dt0) doses.push({ units: u0, dt: dt0 });
+        }
+
+        $$('#mdDosesContainer .dose-entry').forEach((row, idx) => {
+          const uStr = row.querySelector('.md-units').value.trim();
+          const dtStr = row.querySelector('.md-dt').value;
+          if (!uStr && !dtStr) return;
+          const u = parseFloat(uStr);
+          if (!(u > 0)) errors.push(`Bolus ${idx+1} (multi-day): enter a positive number of units.`);
+          if (!dtStr) errors.push(`Bolus ${idx+1} (multi-day): enter date & time.`);
+          if (u > 0 && dtStr) doses.push({ units: u, dt: dtStr });
+        });
+
+        if (doses.length === 0) errors.push('Enter at least one heparin bolus.');
+
+        if (!errors.length) {
+          doses.forEach(d => {
+            const mins = elapsedMinutesMultiDay(d.dt, calcDT);
+            if (mins == null) {
+              errors.push('Dose time cannot be after the calculation time (multi-day).');
+              return;
+            }
+            const frac = remainingFraction(mins);
+            totalEffectiveUnits += d.units * frac;
+            steps.push({ label: steps.length === 0 ? 'Initial dose' : `Bolus ${steps.length}`, when: d.dt.replace("T"," "), units: d.units, mins, frac, remaining: d.units * frac });
+          });
+        }
+      }
+
+      if (errors.length) {
+        errDiv.innerHTML = errors.join('<br>');
+        return;
+      }
+
+      const rawTotal = totalEffectiveUnits;
+      totalEffectiveUnits = rawTotal < 1 ? 0 : Math.round(rawTotal);
+      const rawProtamine = totalEffectiveUnits / UNITS_PER_MG_PROTAMINE;
+      let protamine = Math.round(rawProtamine * 10) / 10;
+      const zeroed = protamine < 0.1 && totalEffectiveUnits < 50;
+      if (zeroed) protamine = 0;
+
+      $('#totalHeparin').textContent = totalEffectiveUnits;
+      $('#protamineMg').textContent = protamine;
+      $('#mathBody').innerHTML = buildMath(steps, rawTotal, totalEffectiveUnits, rawProtamine, protamine, zeroed);
+      resultsDiv.classList.remove('hidden');
+    });
+
+    function buildMath(steps, rawTotal, total, rawProt, prot, zeroed) {
+      const f = (x, d) => x.toFixed(d);
+      const rows = steps.map(st => `
+        <tr>
+          <td>${st.label}</td>
+          <td>${st.when}</td>
+          <td>${st.units}</td>
+          <td>${f(st.mins, 0)} min</td>
+          <td>0.5<sup>${f(st.mins, 0)}/${HEPARIN_HALF_LIFE_MIN}</sup> = ${f(st.frac, 4)}</td>
+          <td>${st.units} × ${f(st.frac, 4)} = <strong>${f(st.remaining, 1)}</strong></td>
+        </tr>`).join('');
+      const sumExpr = steps.map(st => f(st.remaining, 1)).join(' + ');
+      return `
+        <p><strong>Step 1 – Decay each dose.</strong> Remaining = dose × 0.5<sup>(minutes elapsed ÷ ${HEPARIN_HALF_LIFE_MIN})</sup></p>
+        <div class="tablewrap"><table>
+          <thead><tr><th>Dose</th><th>Given</th><th>Units</th><th>Elapsed</th><th>Fraction remaining</th><th>Remaining units</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table></div>
+        <p><strong>Step 2 – Sum.</strong> ${sumExpr} = ${f(rawTotal, 1)} units → rounded to <strong>${total}</strong> units${rawTotal < 1 ? ' (under 1 unit is treated as 0)' : ''}</p>
+        <p><strong>Step 3 – Neutralize.</strong> ${total} units ÷ ${UNITS_PER_MG_PROTAMINE} units per mg = ${f(rawProt, 3)} mg → rounded to 0.1 mg = <strong>${f(Math.round(rawProt * 10) / 10, 1)} mg</strong></p>
+        ${zeroed ? '<p><strong>Step 4 – Floor rule.</strong> Result &lt; 0.1 mg and remaining heparin &lt; 50 units, so dose set to <strong>0 mg</strong>.</p>' : ''}
+        <p>Recommended protamine: <strong>${prot} mg</strong></p>`;
+    }
+
+    // Copy results
+    $('#copyBtn').addEventListener('click', () => {
+      const total = $('#totalHeparin').textContent || '';
+      const dose = $('#protamineMg').textContent || '';
+      const math = ($('#mathBody').innerText || '').trim();
+      const txt = `Estimated remaining heparin: ${total} units\nRecommended protamine: ${dose} mg\n\nCalculation:\n${math}`;
+      navigator.clipboard?.writeText(txt).then(
+        () => alert('Results copied to clipboard.'),
+        () => alert('Unable to copy.')
+      );
+    });
+
+    // Init UI
+    setMode('sameDay');
+    setNowTimes();
+  </script>
+</body>
+</html>
